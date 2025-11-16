@@ -1,28 +1,30 @@
+# -*- coding: utf-8 -*-
 import pygame 
 import pgzrun 
 import random 
 
-# --- CONFIGURATION ---
+# --- CONFIGURACOES PGZERO ---
 WIDTH = 1200
 HEIGHT = 600
-TITLE = "SONIC PLATFORM RUNNER"
+TITLE = "SONIC COM MOEDAS NO CHAO E PLATAFORMAS"
 FPS = 30 
 GAME_SPEED = 8  
 
-# --- CONSTANT DIMENSIONS ---
-PLAYER_SPRITE_HEIGHT = 80  
-PLAYER_SPRITE_WIDTH = 80 
-GROUND_HEIGHT = 30 
+# --- VARIAVEIS DE POSICAO E DIMENSAO FIXAS ---
+ALTURA_SPRITE_PLAYER = 80  
+LARGURA_SPRITE_PLAYER = 80 
+ALTURA_CHAO = 30 
 GROUND_Y_POS = 480 
 PLATFORM_COLOR = (180, 80, 0) 
 MIN_PLATFORM_SPACING = 350 
 
-# --- GLOBAL CONTROL VARIABLES ---
+# --- VARIAVEIS GLOBAIS DE SCROLL E IMAGENS ---
 scroll_speed = 0
 PLATFORM_IMG_A = None 
 PLATFORM_IMG_B = None
+COIN_IMAGE = None 
 
-# --- CLASS PLATFORM ---
+# --- CLASSE PLATFORM ---
 class Platform(pygame.sprite.Sprite):
     def __init__(self, x_pos, y_pos, width, height, image_surface):
         super().__init__()
@@ -36,8 +38,44 @@ class Platform(pygame.sprite.Sprite):
             self.kill() 
         self.rect.x -= scroll_speed 
 
-# --- FUNCTION SPAWN PLATFORM ---
+# --- CLASSE COIN ---
+class Coin(pygame.sprite.Sprite):
+    def __init__(self, x_pos, y_pos):
+        super().__init__()
+        
+        self.image = pygame.transform.scale(COIN_IMAGE, (30, 30))
+        self.rect = self.image.get_rect(x=x_pos, y=y_pos)
+
+    def update(self):
+        global scroll_speed
+        
+        if self.rect.right < 0:
+            self.kill() 
+        self.rect.x -= scroll_speed
+
+# --- FUNCOES DE SPAWN ---
+
+def spawn_coins_on_ground():
+    """Gera um cluster de moedas flutuando acima do chao principal (Moedas do Chão)."""
+    if not COIN_IMAGE or 'coin_group' not in globals() or coin_group is None:
+        return
+
+    # 50% de chance de spawnar um cluster
+    if random.random() < 0.5: 
+        num_coins = random.randint(3, 6) # Cluster de 3 a 6 moedas
+        coin_y = GROUND_Y_POS - 40 # 40 pixels acima do chao principal
+        
+        # Posicao inicial fora da tela + margem
+        start_x = WIDTH + random.randint(50, 200) 
+        
+        for i in range(num_coins):
+            coin_x = start_x + (i * 45) 
+            new_coin = Coin(x_pos=coin_x, y_pos=coin_y)
+            coin_group.add(new_coin)
+
+
 def spawn_platform():
+    """Gera uma plataforma e, ocasionalmente, moedas acima dela (Moedas da Plataforma)."""
     
     if 'platform_group' not in globals() or platform_group is None:
         return
@@ -64,8 +102,23 @@ def spawn_platform():
                             
     platform_group.add(new_platform)
 
+    # --- LOGICA DE SPAWN DE MOEDAS NA PLATAFORMA ---
+    if COIN_IMAGE and random.random() < 0.7: 
+        num_coins = random.randint(2, 5) 
+        gap_between_coins = platform_width // num_coins if num_coins > 0 else 0
+        start_x = new_platform_x + 20 
+        
+        for i in range(num_coins):
+            coin_x = start_x + (gap_between_coins * i)
+            coin_y = platform_y - 40 
+            
+            # Garante que a moeda nao saia da plataforma
+            if coin_x < new_platform_x + platform_width - 30:
+                new_coin = Coin(x_pos=coin_x, y_pos=coin_y)
+                coin_group.add(new_coin)
 
-# --- CLASS PLAYER ---
+
+# --- CLASSE PLAYER ---
 class Player(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
@@ -73,10 +126,10 @@ class Player(pygame.sprite.Sprite):
         def _load_and_scale(filename):
             try:
                 img = pygame.image.load(f"images/{filename}").convert_alpha()
-                return pygame.transform.scale(img, (PLAYER_SPRITE_WIDTH, PLAYER_SPRITE_HEIGHT))
+                return pygame.transform.scale(img, (LARGURA_SPRITE_PLAYER, ALTURA_SPRITE_PLAYER))
             except pygame.error as e:
                 print(f"ERROR: Could not load {filename}. Details: {e}")
-                fail_surface = pygame.Surface((PLAYER_SPRITE_WIDTH, PLAYER_SPRITE_HEIGHT))
+                fail_surface = pygame.Surface((LARGURA_SPRITE_PLAYER, ALTURA_SPRITE_PLAYER))
                 fail_surface.fill((255, 0, 0)) 
                 return fail_surface
 
@@ -86,27 +139,20 @@ class Player(pygame.sprite.Sprite):
 
         self.current_image = self.idle_right
         self.image = self.current_image
-        self.rect = self.image.get_rect(x=100, y=GROUND_Y_POS - PLAYER_SPRITE_HEIGHT) 
+        self.rect = self.image.get_rect(x=100, y=GROUND_Y_POS - ALTURA_SPRITE_PLAYER) 
         self.speed_y = 0; self.gravity = 1; self.on_ground = True; self.facing_right = True; self.is_jumping = False; self.is_falling = False
 
     def move_horizontal(self, all_terrain_sprites):
         global scroll_speed
-        
-        old_x = self.rect.x 
-        
-        moving_horizontally = False
+        old_x = self.rect.x; moving_horizontally = False
         if keyboard.right:
             self.rect.x += GAME_SPEED; self.facing_right = True; moving_horizontally = True; scroll_speed = GAME_SPEED
         elif keyboard.left:
             self.rect.x -= GAME_SPEED; self.facing_right = False; moving_horizontally = True; scroll_speed = 0 
         else:
             scroll_speed = 0 
-
         for sprite in all_terrain_sprites:
-            if self.rect.colliderect(sprite.rect):
-                self.rect.x = old_x 
-                break 
-        
+            if self.rect.colliderect(sprite.rect): self.rect.x = old_x; break 
         return moving_horizontally
     
     def check_boundaries(self):
@@ -115,25 +161,19 @@ class Player(pygame.sprite.Sprite):
         if self.rect.right > WIDTH: self.rect.right = WIDTH; scroll_speed = 0 
 
     def apply_gravity(self):
-        self.rect.y += self.speed_y 
-        self.speed_y += self.gravity
+        self.rect.y += self.speed_y; self.speed_y += self.gravity
 
     def jump_or_fly(self):
         if keyboard.space and self.on_ground: 
             self.speed_y = -18; self.on_ground = False; self.is_jumping = True; self.is_falling = False
         
     def check_ground_sensor(self, all_terrain_sprites):
-        sensor_rect = self.rect.copy()
-        sensor_rect.y = self.rect.bottom 
-        sensor_rect.height = 1 
-        
+        sensor_rect = self.rect.copy(); sensor_rect.y = self.rect.bottom; sensor_rect.height = 1 
         for sprite in all_terrain_sprites:
-            if sensor_rect.colliderect(sprite.rect):
-                return True
+            if sensor_rect.colliderect(sprite.rect): return True
         return False
 
     def check_vertical_collision(self, all_terrain_sprites):
-        
         on_ground_this_frame = self.check_ground_sensor(all_terrain_sprites)
         
         if on_ground_this_frame and self.speed_y >= 0:
@@ -143,31 +183,22 @@ class Player(pygame.sprite.Sprite):
                 if self.rect.bottom > platform_to_land_on.rect.top:
                     self.rect.bottom = platform_to_land_on.rect.top
             
-            self.speed_y = 0
-            self.on_ground = True
-            return 
+            self.speed_y = 0; self.on_ground = True; return
         
         if self.speed_y < 0: 
             collisions = pygame.sprite.spritecollide(self, all_terrain_sprites, False)
             if collisions:
-                self.speed_y = 0 
-                self.on_ground = False
-                return 
+                self.speed_y = 0; self.on_ground = False; return 
 
         if not on_ground_this_frame and self.rect.bottom < GROUND_Y_POS:
             self.on_ground = False
         elif self.rect.bottom >= GROUND_Y_POS:
-            self.rect.bottom = GROUND_Y_POS
-            self.speed_y = 0
-            self.on_ground = True
+            self.rect.bottom = GROUND_Y_POS; self.speed_y = 0; self.on_ground = True
 
 
     def update(self, all_terrain_sprites): 
-        self.jump_or_fly() 
-        self.apply_gravity()
-        self.check_vertical_collision(all_terrain_sprites)
-        moving_horizontally = self.move_horizontal(all_terrain_sprites) 
-        self.check_boundaries()
+        self.jump_or_fly(); self.apply_gravity(); self.check_vertical_collision(all_terrain_sprites)
+        moving_horizontally = self.move_horizontal(all_terrain_sprites); self.check_boundaries()
         
         if self.on_ground:
             self.is_jumping = False; self.is_falling = False
@@ -176,75 +207,62 @@ class Player(pygame.sprite.Sprite):
             else:
                 self.current_image = self.idle_right if self.facing_right else self.idle_left
         else:
-            if self.speed_y < 0:
-                self.is_jumping = True; self.is_falling = False
-                self.current_image = self.fly_right if self.facing_right else self.fly_left
-            else: 
-                self.is_falling = True; self.is_jumping = False
-                self.current_image = self.fall_right if self.facing_right else self.fall_left
+            if self.speed_y < 0: self.is_jumping = True; self.is_falling = False; self.current_image = self.fly_right if self.facing_right else self.fly_left
+            else: self.is_falling = True; self.is_jumping = False; self.current_image = self.fall_right if self.facing_right else self.fall_left
 
         self.image = self.current_image
 
-# --- CLASS GROUND ---
+# --- CLASSES AUXILIARES E SETUP ---
 class Ground(pygame.sprite.Sprite):
     def __init__(self, x_pos):
         super().__init__()
         ground_w = WIDTH * 2
-        self.image = pygame.Surface((ground_w, GROUND_HEIGHT), pygame.SRCALPHA)
-        self.image.fill((0, 100, 160, 0)) 
-        self.rect = self.image.get_rect(x=x_pos, y=GROUND_Y_POS)
-
+        self.image = pygame.Surface((ground_w, ALTURA_CHAO), pygame.SRCALPHA); self.image.fill((0, 100, 160, 0)); self.rect = self.image.get_rect(x=x_pos, y=GROUND_Y_POS)
     def update(self):
         global scroll_speed
         self.rect.x -= scroll_speed
         
-# --- CLASS BACKGROUND ---
 class Background(pygame.sprite.Sprite):
     def __init__(self, x_pos):
         super().__init__()
-        try:
-            self.image = pygame.image.load("images/fundosonics.jpg").convert()
-            self.image = pygame.transform.scale(self.image, (WIDTH, HEIGHT))
-        except pygame.error as e:
-            self.image = pygame.Surface((WIDTH, HEIGHT))
-            self.image.fill((135, 206, 235)) 
+        try: self.image = pygame.image.load("images/fundosonics.jpg").convert(); self.image = pygame.transform.scale(self.image, (WIDTH, HEIGHT))
+        except pygame.error as e: self.image = pygame.Surface((WIDTH, HEIGHT)); self.image.fill((135, 206, 235)) 
         self.rect = self.image.get_rect(x=x_pos, y=0)
-
     def update(self):
         global scroll_speed
         self.rect.x -= scroll_speed 
         
-# --- SETUP GLOBAL AND GROUPS ---
+# --- INICIALIZACAO DE ASSETS E GRUPOS ---
 try:
-    # 1. Load Platform Images
     PLATFORM_IMG_A = pygame.image.load("images/plataformaexplo.png").convert_alpha()
     PLATFORM_IMG_B = pygame.image.load("images/plataformabem.png").convert_alpha()
+    COIN_IMAGE = pygame.image.load("images/moeda3.png").convert_alpha()
 except pygame.error as e:
-    PLATFORM_IMG_A = None; PLATFORM_IMG_B = None
+    PLATFORM_IMG_A = None; PLATFORM_IMG_B = None; COIN_IMAGE = None
 
 try:
-    # 2. Initialize Groups and Objects
-    player_group = pygame.sprite.Group(); ground_group = pygame.sprite.Group(); background_group = pygame.sprite.Group(); platform_group = pygame.sprite.Group() 
+    player_group = pygame.sprite.Group(); ground_group = pygame.sprite.Group(); background_group = pygame.sprite.Group(); platform_group = pygame.sprite.Group(); coin_group = pygame.sprite.Group() 
     player = Player(); player_group.add(player)
     ground1 = Ground(0); ground2 = Ground(ground1.rect.width); ground_group.add(ground1, ground2)
     bg1 = Background(0); bg2 = Background(WIDTH); background_group.add(bg1, bg2)
 
-    # Schedule platform generation
+    # AGENDA: Plataformas (com moedas) a cada 2.0s
     clock.schedule_interval(spawn_platform, 2.0)
+    # AGENDA: Moedas no Chao a cada 1.2s
+    clock.schedule_interval(spawn_coins_on_ground, 1.2)
     
-    # Initial Platform
+    # Plataforma inicial (para dar o que o jogador saltar no inicio)
     image_for_first_platform = PLATFORM_IMG_A
     if not PLATFORM_IMG_A: 
-        image_for_first_platform = pygame.Surface((200, 20), pygame.SRCALPHA)
-        image_for_first_platform.fill(PLATFORM_COLOR)
+        image_for_first_platform = pygame.Surface((200, 20), pygame.SRCALPHA); image_for_first_platform.fill(PLATFORM_COLOR)
         
     platform_group.add(Platform(x_pos=WIDTH, y_pos=GROUND_Y_POS - 150, width=200, height=20, image_surface=image_for_first_platform))
     
 except Exception as e:
-    print(f"CRITICAL ERROR IN INITIALIZATION: {e}")
-    player_group = None; ground_group = None; background_group = None; platform_group = None
+    print(f"ERRO CRITICO AO INICIAR GRUPOS/SPRITES: {e}")
+    player_group = None; ground_group = None; background_group = None; platform_group = None; coin_group = None
 
-# --- AUXILIARY FUNCTION ---
+# --- FUNCAO AUXILIAR ---
 def off_screen(sprite):
     return sprite.rect.right < 0
 
@@ -258,9 +276,8 @@ def update():
     
     player_group.update(all_terrain)
     
-    ground_group.update(); background_group.update(); platform_group.update()
+    ground_group.update(); background_group.update(); platform_group.update(); coin_group.update()
     
-    # Infinite Scroll Logic
     if scroll_speed > 0:
         if off_screen(background_group.sprites()[0]):
             background_group.remove(background_group.sprites()[0]); last_bg = background_group.sprites()[-1]
@@ -275,6 +292,7 @@ def draw():
     
     background_group.draw(screen.surface) 
     platform_group.draw(screen.surface) 
+    coin_group.draw(screen.surface)
     ground_group.draw(screen.surface) 
     player_group.draw(screen.surface)
 
