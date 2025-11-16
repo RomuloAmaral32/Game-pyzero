@@ -2,6 +2,7 @@
 import pygame 
 import pgzrun 
 import random 
+import math 
 
 # --- CONFIGURACOES PGZERO ---
 WIDTH = 1200
@@ -96,26 +97,14 @@ class NaveInimiga(pygame.sprite.Sprite):
     def update(self):
         global scroll_speed
         self.rect.x -= (scroll_speed + self.speed) 
-        self.rect.y = self.initial_y + self.amplitude * pygame.math.sin(pygame.time.get_ticks() * self.freq)
+        # CORRIGIDO: Usando math.sin do módulo 'math'
+        self.rect.y = self.initial_y + self.amplitude * math.sin(pygame.time.get_ticks() * self.freq)
         if self.rect.right < 0:
             self.kill() 
 # --- FIM CLASSES DE INIMIGOS ---
 
 
-# --- FUNCOES DE SPAWN (MOVIMENTADAS PARA O TOPO) ---
-def spawn_ground_enemy():
-    if not CORREDOR_INIMIGO_IMAGE or 'enemy_ground_group' not in globals() or enemy_ground_group is None: return
-    if random.random() < 0.3: 
-        new_enemy = CorredorInimigo(x_pos=WIDTH + random.randint(50, 300))
-        enemy_ground_group.add(new_enemy)
-
-def spawn_air_enemy():
-    if not NAVE_INIMIGA_IMAGE or 'enemy_air_group' not in globals() or enemy_air_group is None: return
-    if random.random() < 0.2: 
-        y_pos = random.randint(HEIGHT // 4, HEIGHT // 2) 
-        new_enemy = NaveInimiga(x_pos=WIDTH + random.randint(50, 500), y_pos=y_pos)
-        enemy_air_group.add(new_enemy)
-        
+# --- FUNCOES DE SPAWN ---
 def spawn_platform():
     if 'platform_group' not in globals() or platform_group is None: return
     last_platform_right_edge = 0
@@ -150,6 +139,22 @@ def spawn_coins_on_ground():
         for i in range(num_coins):
             coin_x = start_x + (i * 45); coin_y = GROUND_Y_POS - 40 
             coin_group.add(Coin(x_pos=coin_x, y_pos=coin_y))
+
+def spawn_ground_enemy():
+    if not CORREDOR_INIMIGO_IMAGE or 'enemy_ground_group' not in globals() or enemy_ground_group is None: return
+    if random.random() < 0.4: 
+        new_enemy = CorredorInimigo(x_pos=WIDTH + random.randint(50, 300))
+        enemy_ground_group.add(new_enemy)
+
+def spawn_air_enemy():
+    # CHECAGEM CRITICA: Se a imagem nao carregou, nao tente criar o inimigo.
+    if not NAVE_INIMIGA_IMAGE or 'enemy_air_group' not in globals() or enemy_air_group is None: return
+    
+    # Aumentado para 70% de chance de spawn
+    if random.random() < 0.7: 
+        y_pos = random.randint(HEIGHT // 4, HEIGHT // 2) 
+        new_enemy = NaveInimiga(x_pos=WIDTH + random.randint(50, 500), y_pos=y_pos)
+        enemy_air_group.add(new_enemy)
 # --- FIM FUNCOES DE SPAWN ---
 
 
@@ -163,7 +168,7 @@ class Player(pygame.sprite.Sprite):
                 img = pygame.image.load(f"images/{filename}").convert_alpha()
                 return pygame.transform.scale(img, (LARGURA_SPRITE_PLAYER, ALTURA_SPRITE_PLAYER))
             except pygame.error as e:
-                print(f"ERROR: Could not load {filename}. Details: {e}")
+                print(f"ERROR: Nao foi possivel carregar {filename}. Detalhes: {e}")
                 fail_surface = pygame.Surface((LARGURA_SPRITE_PLAYER, ALTURA_SPRITE_PLAYER)); fail_surface.fill((255, 0, 0)); return fail_surface
 
         self.idle_right = _load_and_scale("paradodir.png"); self.run_right = _load_and_scale("correndodir.png"); self.fly_right = _load_and_scale("semipulodir.png"); self.fall_right = _load_and_scale("pulodir.png"); self.land_right = _load_and_scale("pousodir.png"); self.run_left = _load_and_scale("correndoesq.png"); self.fly_left = _load_and_scale("semipuloesq.png"); self.fall_left = _load_and_scale("puloesq.png"); self.land_left = _load_and_scale("pousoesq.png")
@@ -183,8 +188,7 @@ class Player(pygame.sprite.Sprite):
         if keyboard.right:
             self.rect.x += GAME_SPEED; self.facing_right = True; moving_horizontally = True; scroll_speed = GAME_SPEED
         elif keyboard.left:
-            if self.rect.x > 100: 
-                self.rect.x -= GAME_SPEED
+            if self.rect.x > 100: self.rect.x -= GAME_SPEED
             self.facing_right = False; moving_horizontally = True; scroll_speed = 0 
         else:
             scroll_speed = 0 
@@ -203,7 +207,7 @@ class Player(pygame.sprite.Sprite):
     def jump_or_fly(self):
         if self.is_exploding: return
         if keyboard.space and self.on_ground: 
-            self.speed_y = -18; self.on_ground = False; self.is_jumping = True; selfs_falling = False
+            self.speed_y = -18; self.on_ground = False; self.is_jumping = True; self.is_falling = False
         
     def check_ground_sensor(self, all_terrain_sprites):
         sensor_rect = self.rect.copy(); sensor_rect.y = self.rect.bottom; sensor_rect.height = 1 
@@ -266,13 +270,12 @@ class Player(pygame.sprite.Sprite):
             self.update_explosion_animation()
             return
 
-        self.jump_or_fly(); self.apply_gravity(); self.check_vertical_collision(all_terrain_sprites)
-        moving_horizontally = self.move_horizontal(all_terrain_sprites); self.check_boundaries()
-        
-        # Colisão com inimigos (morte)
+        # Checa colisão com inimigos (morte)
         if pygame.sprite.spritecollide(self, all_enemy_sprites, False):
             self.start_explosion()
             return
+
+        self.jump_or_fly(); self.apply_gravity(); self.check_vertical_collision(all_terrain_sprites); moving_horizontally = self.move_horizontal(all_terrain_sprites); self.check_boundaries()
         
         if self.on_ground:
             self.is_jumping = False; self.is_falling = False
@@ -330,7 +333,7 @@ class NaveInimiga(pygame.sprite.Sprite):
     def update(self):
         global scroll_speed
         self.rect.x -= (scroll_speed + self.speed) 
-        self.rect.y = self.initial_y + self.amplitude * pygame.math.sin(pygame.time.get_ticks() * self.freq)
+        self.rect.y = self.initial_y + self.amplitude * math.sin(pygame.time.get_ticks() * self.freq)
         if self.rect.right < 0:
             self.kill() 
         
@@ -342,6 +345,8 @@ def load_assets():
         PLATFORM_IMG_B = pygame.image.load("images/plataformabem.png").convert_alpha()
         COIN_IMAGE = pygame.image.load("images/moeda3.png").convert_alpha()
         for i in range(1, 4): EXPLOSION_IMAGES.append(pygame.image.load(f"images/explo{i}.png").convert_alpha())
+        
+        # --- Carregamento de Inimigos ---
         NAVE_INIMIGA_IMAGE = pygame.image.load("images/naveinimiga.png").convert_alpha()
         CORREDOR_INIMIGO_IMAGE = pygame.image.load("images/corredorinimigo.png").convert_alpha()
         
@@ -425,7 +430,7 @@ def update():
     score += len(coins_collected)
     
     ground_group.update(); background_group.update(); platform_group.update(); coin_group.update()
-    enemy_ground_group.update(); enemy_air_group.update()
+    enemy_ground_group.update(); enemy_air_group.update() # Atualiza inimigos
     
     if scroll_speed > 0:
         if off_screen(background_group.sprites()[0]):
