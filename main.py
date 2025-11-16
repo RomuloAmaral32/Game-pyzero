@@ -18,20 +18,23 @@ GROUND_Y_POS = 480
 PLATFORM_COLOR = (180, 80, 0) 
 MIN_PLATFORM_SPACING = 350 
 
-# --- VARIAVEIS GLOBAIS DE CONTROLE E IMAGENS ---
+# --- VARIAVEIS GLOBAIS DE SCROLL E IMAGENS ---
 scroll_speed = 0
 score = 0
 PLATFORM_IMG_A = None 
 PLATFORM_IMG_B = None
 COIN_IMAGE = None 
+EXPLOSION_IMAGES = [] # Lista global para armazenar as superficies de explosao
+explosion_frame_rate = 5 
 
 # --- CLASSE PLATFORM ---
 class Platform(pygame.sprite.Sprite):
-    def __init__(self, x_pos, y_pos, width, height, image_surface):
+    def __init__(self, x_pos, y_pos, width, height, image_surface, is_explosive=False):
         super().__init__()
         
         self.image = pygame.transform.scale(image_surface, (width, height))
         self.rect = self.image.get_rect(x=x_pos, y=y_pos)
+        self.is_explosive = is_explosive
 
     def update(self):
         global scroll_speed
@@ -61,11 +64,15 @@ def spawn_platform():
     platform_y = random.randint(GROUND_Y_POS - 250, GROUND_Y_POS - 100)
     new_platform_x = random.randint(min_x_start, min_x_start + 200)
 
-    if PLATFORM_IMG_A and PLATFORM_IMG_B: image_to_use = random.choice([PLATFORM_IMG_A, PLATFORM_IMG_B])
+    is_explosive_platform = random.random() < 0.3
+    
+    if is_explosive_platform and PLATFORM_IMG_A: image_to_use = PLATFORM_IMG_A
+    elif PLATFORM_IMG_B: image_to_use = PLATFORM_IMG_B
     else:
         solid_surface = pygame.Surface((platform_width, 20), pygame.SRCALPHA); solid_surface.fill(PLATFORM_COLOR); image_to_use = solid_surface
 
-    new_platform = Platform(x_pos=new_platform_x, y_pos=platform_y, width=platform_width, height=20, image_surface=image_to_use)
+    new_platform = Platform(x_pos=new_platform_x, y_pos=platform_y, width=platform_width, height=20, image_surface=image_to_use, is_explosive=is_explosive_platform)
+                            
     platform_group.add(new_platform)
 
     # Logica de moedas na plataforma
@@ -102,11 +109,17 @@ class Player(pygame.sprite.Sprite):
         try: self.idle_left = _load_and_scale("paradoesq.png")
         except: self.idle_left = pygame.transform.flip(self.idle_right, True, False)
 
+        # FIX STRUCTURAL BUG: Inicializa a lista de frames de explosao
+        self.explosion_frames = [pygame.transform.scale(img, (LARGURA_SPRITE_PLAYER, ALTURA_SPRITE_PLAYER)) for img in EXPLOSION_IMAGES]
+
         self.current_image = self.idle_right; self.image = self.current_image; self.rect = self.image.get_rect(x=100, y=GROUND_Y_POS - ALTURA_SPRITE_PLAYER) 
         self.speed_y = 0; self.gravity = 1; self.on_ground = True; self.facing_right = True; self.is_jumping = False; self.is_falling = False
+        self.is_exploding = False; self.explosion_frame = 0; self.time_since_explosion_frame_change = 0
 
     def move_horizontal(self, all_terrain_sprites):
-        global scroll_speed; old_x = self.rect.x; moving_horizontally = False
+        global scroll_speed
+        if self.is_exploding: return False 
+        old_x = self.rect.x; moving_horizontally = False
         if keyboard.right:
             self.rect.x += GAME_SPEED; self.facing_right = True; moving_horizontally = True; scroll_speed = GAME_SPEED
         elif keyboard.left:
@@ -123,9 +136,10 @@ class Player(pygame.sprite.Sprite):
         if self.rect.right > WIDTH: self.rect.right = WIDTH; scroll_speed = 0 
 
     def apply_gravity(self):
-        self.rect.y += self.speed_y; self.speed_y += self.gravity
+        if not self.is_exploding: self.rect.y += self.speed_y; self.speed_y += self.gravity
 
     def jump_or_fly(self):
+        if self.is_exploding: return
         if keyboard.space and self.on_ground: self.speed_y = -18; self.on_ground = False; self.is_jumping = True; self.is_falling = False
         
     def check_ground_sensor(self, all_terrain_sprites):
@@ -135,12 +149,18 @@ class Player(pygame.sprite.Sprite):
         return False
 
     def check_vertical_collision(self, all_terrain_sprites):
+        if self.is_exploding: return
         on_ground_this_frame = self.check_ground_sensor(all_terrain_sprites)
         
         if on_ground_this_frame and self.speed_y >= 0:
             collisions = pygame.sprite.spritecollide(self, all_terrain_sprites, False)
             if collisions:
                 platform_to_land_on = min(collisions, key=lambda x: x.rect.top)
+                
+                if platform_to_land_on.is_explosive:
+                    self.start_explosion()
+                    return
+
                 if self.rect.bottom > platform_to_land_on.rect.top:
                     self.rect.bottom = platform_to_land_on.rect.top
             
@@ -149,6 +169,9 @@ class Player(pygame.sprite.Sprite):
         if self.speed_y < 0: 
             collisions = pygame.sprite.spritecollide(self, all_terrain_sprites, False)
             if collisions:
+                if collisions[0].is_explosive:
+                    self.start_explosion()
+                    return
                 self.speed_y = 0; self.on_ground = False; return 
 
         if not on_ground_this_frame and self.rect.bottom < GROUND_Y_POS:
@@ -156,8 +179,27 @@ class Player(pygame.sprite.Sprite):
         elif self.rect.bottom >= GROUND_Y_POS:
             self.rect.bottom = GROUND_Y_POS; self.speed_y = 0; self.on_ground = True
 
+    def start_explosion(self):
+        if not self.is_exploding and self.explosion_frames:
+            self.is_exploding = True; self.explosion_frame = 0; self.image = self.explosion_frames[0] 
+            self.speed_y = 0; self.on_ground = False; self.time_since_explosion_frame_change = 0
+
+    def update_explosion_animation(self):
+        global explosion_frame_rate
+        if self.is_exploding:
+            self.time_since_explosion_frame_change += 1
+            if self.time_since_explosion_frame_change >= explosion_frame_rate:
+                self.time_since_explosion_frame_change = 0; self.explosion_frame += 1
+                if self.explosion_frame < len(self.explosion_frames):
+                    self.image = self.explosion_frames[self.explosion_frame]
+                else:
+                    self.kill()
 
     def update(self, all_terrain_sprites): 
+        if self.is_exploding:
+            self.update_explosion_animation()
+            return
+
         self.jump_or_fly(); self.apply_gravity(); self.check_vertical_collision(all_terrain_sprites)
         moving_horizontally = self.move_horizontal(all_terrain_sprites); self.check_boundaries()
         
@@ -176,7 +218,7 @@ class Player(pygame.sprite.Sprite):
 # --- CLASSES AUXILIARES E SETUP ---
 class Ground(pygame.sprite.Sprite):
     def __init__(self, x_pos):
-        super().__init__(); ground_w = WIDTH * 2; self.image = pygame.Surface((ground_w, ALTURA_CHAO), pygame.SRCALPHA); self.image.fill((0, 100, 160, 0)); self.rect = self.image.get_rect(x=x_pos, y=GROUND_Y_POS)
+        super().__init__(); ground_w = WIDTH * 2; self.image = pygame.Surface((ground_w, ALTURA_CHAO), pygame.SRCALPHA); self.image.fill((0, 100, 160, 0)); self.rect = self.image.get_rect(x=x_pos, y=GROUND_Y_POS); self.is_explosive = False
     def update(self):
         global scroll_speed; self.rect.x -= scroll_speed
         
@@ -185,7 +227,7 @@ class Background(pygame.sprite.Sprite):
         super().__init__(); 
         try: self.image = pygame.image.load("images/fundosonics.jpg").convert(); self.image = pygame.transform.scale(self.image, (WIDTH, HEIGHT))
         except pygame.error as e: self.image = pygame.Surface((WIDTH, HEIGHT)); self.image.fill((135, 206, 235)) 
-        self.rect = self.image.get_rect(x=x_pos, y=0)
+        self.rect = self.image.get_rect(x=x_pos, y=0); self.is_explosive = False
     def update(self):
         global scroll_speed; self.rect.x -= scroll_speed 
         
@@ -194,8 +236,14 @@ try:
     PLATFORM_IMG_A = pygame.image.load("images/plataformaexplo.png").convert_alpha()
     PLATFORM_IMG_B = pygame.image.load("images/plataformabem.png").convert_alpha()
     COIN_IMAGE = pygame.image.load("images/moeda3.png").convert_alpha()
+    
+    # Carrega as imagens da explosao
+    for i in range(1, 4): 
+        EXPLOSION_IMAGES.append(pygame.image.load(f"images/explo{i}.png").convert_alpha())
+
 except pygame.error as e:
     PLATFORM_IMG_A = None; PLATFORM_IMG_B = None; COIN_IMAGE = None
+    EXPLOSION_IMAGES = []
 
 try:
     player_group = pygame.sprite.Group(); ground_group = pygame.sprite.Group(); background_group = pygame.sprite.Group(); platform_group = pygame.sprite.Group(); coin_group = pygame.sprite.Group() 
