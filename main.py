@@ -6,7 +6,7 @@ import random
 # --- CONFIGURACOES PGZERO ---
 WIDTH = 1200
 HEIGHT = 600
-TITLE = "SONIC COM MOEDAS NO CHAO E PLATAFORMAS"
+TITLE = "SONIC ESTAVEL FINALISSIMO COM COLISAO CORRIGIDA"
 FPS = 30 
 GAME_SPEED = 8  
 
@@ -18,8 +18,9 @@ GROUND_Y_POS = 480
 PLATFORM_COLOR = (180, 80, 0) 
 MIN_PLATFORM_SPACING = 350 
 
-# --- VARIAVEIS GLOBAIS DE SCROLL E IMAGENS ---
+# --- VARIAVEIS GLOBAIS DE CONTROLE E IMAGENS ---
 scroll_speed = 0
+score = 0
 PLATFORM_IMG_A = None 
 PLATFORM_IMG_B = None
 COIN_IMAGE = None 
@@ -34,8 +35,7 @@ class Platform(pygame.sprite.Sprite):
 
     def update(self):
         global scroll_speed
-        if self.rect.right < 0:
-            self.kill() 
+        if self.rect.right < 0: self.kill() 
         self.rect.x -= scroll_speed 
 
 # --- CLASSE COIN ---
@@ -48,74 +48,41 @@ class Coin(pygame.sprite.Sprite):
 
     def update(self):
         global scroll_speed
-        
-        if self.rect.right < 0:
-            self.kill() 
+        if self.rect.right < 0: self.kill() 
         self.rect.x -= scroll_speed
 
 # --- FUNCOES DE SPAWN ---
-
-def spawn_coins_on_ground():
-    """Gera um cluster de moedas flutuando acima do chao principal (Moedas do Chão)."""
-    if not COIN_IMAGE or 'coin_group' not in globals() or coin_group is None:
-        return
-
-    # 50% de chance de spawnar um cluster
-    if random.random() < 0.5: 
-        num_coins = random.randint(3, 6) # Cluster de 3 a 6 moedas
-        coin_y = GROUND_Y_POS - 40 # 40 pixels acima do chao principal
-        
-        # Posicao inicial fora da tela + margem
-        start_x = WIDTH + random.randint(50, 200) 
-        
-        for i in range(num_coins):
-            coin_x = start_x + (i * 45) 
-            new_coin = Coin(x_pos=coin_x, y_pos=coin_y)
-            coin_group.add(new_coin)
-
-
 def spawn_platform():
-    """Gera uma plataforma e, ocasionalmente, moedas acima dela (Moedas da Plataforma)."""
-    
-    if 'platform_group' not in globals() or platform_group is None:
-        return
-        
+    if 'platform_group' not in globals() or platform_group is None: return
     last_platform_right_edge = 0
-    if platform_group.sprites():
-        last_platform_right_edge = max(p.rect.right for p in platform_group.sprites())
-    
+    if platform_group.sprites(): last_platform_right_edge = max(p.rect.right for p in platform_group.sprites())
     min_x_start = max(WIDTH, last_platform_right_edge + MIN_PLATFORM_SPACING)
-    
     platform_width = random.randint(150, 300) 
     platform_y = random.randint(GROUND_Y_POS - 250, GROUND_Y_POS - 100)
     new_platform_x = random.randint(min_x_start, min_x_start + 200)
 
-    if PLATFORM_IMG_A and PLATFORM_IMG_B:
-        image_to_use = random.choice([PLATFORM_IMG_A, PLATFORM_IMG_B])
+    if PLATFORM_IMG_A and PLATFORM_IMG_B: image_to_use = random.choice([PLATFORM_IMG_A, PLATFORM_IMG_B])
     else:
-        solid_surface = pygame.Surface((platform_width, 20), pygame.SRCALPHA)
-        solid_surface.fill(PLATFORM_COLOR)
-        image_to_use = solid_surface
+        solid_surface = pygame.Surface((platform_width, 20), pygame.SRCALPHA); solid_surface.fill(PLATFORM_COLOR); image_to_use = solid_surface
 
-    new_platform = Platform(x_pos=new_platform_x, y_pos=platform_y, 
-                            width=platform_width, height=20, image_surface=image_to_use)
-                            
+    new_platform = Platform(x_pos=new_platform_x, y_pos=platform_y, width=platform_width, height=20, image_surface=image_to_use)
     platform_group.add(new_platform)
 
-    # --- LOGICA DE SPAWN DE MOEDAS NA PLATAFORMA ---
+    # Logica de moedas na plataforma
     if COIN_IMAGE and random.random() < 0.7: 
-        num_coins = random.randint(2, 5) 
-        gap_between_coins = platform_width // num_coins if num_coins > 0 else 0
-        start_x = new_platform_x + 20 
-        
+        num_coins = random.randint(2, 5); gap_between_coins = platform_width // num_coins if num_coins > 0 else 0; start_x = new_platform_x + 20 
         for i in range(num_coins):
-            coin_x = start_x + (gap_between_coins * i)
-            coin_y = platform_y - 40 
-            
-            # Garante que a moeda nao saia da plataforma
-            if coin_x < new_platform_x + platform_width - 30:
-                new_coin = Coin(x_pos=coin_x, y_pos=coin_y)
-                coin_group.add(new_coin)
+            coin_x = start_x + (gap_between_coins * i); coin_y = platform_y - 40 
+            if coin_x < new_platform_x + platform_width - 30: coin_group.add(Coin(x_pos=coin_x, y_pos=coin_y))
+
+def spawn_coins_on_ground():
+    if not COIN_IMAGE or 'coin_group' not in globals() or coin_group is None: return
+
+    if random.random() < 0.5: 
+        num_coins = random.randint(3, 6); coin_y = GROUND_Y_POS - 40; start_x = WIDTH + random.randint(50, 200) 
+        for i in range(num_coins):
+            coin_x = start_x + (i * 45) 
+            coin_group.add(Coin(x_pos=coin_x, y_pos=coin_y))
 
 
 # --- CLASSE PLAYER ---
@@ -129,22 +96,17 @@ class Player(pygame.sprite.Sprite):
                 return pygame.transform.scale(img, (LARGURA_SPRITE_PLAYER, ALTURA_SPRITE_PLAYER))
             except pygame.error as e:
                 print(f"ERROR: Could not load {filename}. Details: {e}")
-                fail_surface = pygame.Surface((LARGURA_SPRITE_PLAYER, ALTURA_SPRITE_PLAYER))
-                fail_surface.fill((255, 0, 0)) 
-                return fail_surface
+                fail_surface = pygame.Surface((LARGURA_SPRITE_PLAYER, ALTURA_SPRITE_PLAYER)); fail_surface.fill((255, 0, 0)); return fail_surface
 
         self.idle_right = _load_and_scale("paradodir.png"); self.run_right = _load_and_scale("correndodir.png"); self.fly_right = _load_and_scale("semipulodir.png"); self.fall_right = _load_and_scale("pulodir.png"); self.land_right = _load_and_scale("pousodir.png"); self.run_left = _load_and_scale("correndoesq.png"); self.fly_left = _load_and_scale("semipuloesq.png"); self.fall_left = _load_and_scale("puloesq.png"); self.land_left = _load_and_scale("pousoesq.png")
         try: self.idle_left = _load_and_scale("paradoesq.png")
         except: self.idle_left = pygame.transform.flip(self.idle_right, True, False)
 
-        self.current_image = self.idle_right
-        self.image = self.current_image
-        self.rect = self.image.get_rect(x=100, y=GROUND_Y_POS - ALTURA_SPRITE_PLAYER) 
+        self.current_image = self.idle_right; self.image = self.current_image; self.rect = self.image.get_rect(x=100, y=GROUND_Y_POS - ALTURA_SPRITE_PLAYER) 
         self.speed_y = 0; self.gravity = 1; self.on_ground = True; self.facing_right = True; self.is_jumping = False; self.is_falling = False
 
     def move_horizontal(self, all_terrain_sprites):
-        global scroll_speed
-        old_x = self.rect.x; moving_horizontally = False
+        global scroll_speed; old_x = self.rect.x; moving_horizontally = False
         if keyboard.right:
             self.rect.x += GAME_SPEED; self.facing_right = True; moving_horizontally = True; scroll_speed = GAME_SPEED
         elif keyboard.left:
@@ -164,8 +126,7 @@ class Player(pygame.sprite.Sprite):
         self.rect.y += self.speed_y; self.speed_y += self.gravity
 
     def jump_or_fly(self):
-        if keyboard.space and self.on_ground: 
-            self.speed_y = -18; self.on_ground = False; self.is_jumping = True; self.is_falling = False
+        if keyboard.space and self.on_ground: self.speed_y = -18; self.on_ground = False; self.is_jumping = True; self.is_falling = False
         
     def check_ground_sensor(self, all_terrain_sprites):
         sensor_rect = self.rect.copy(); sensor_rect.y = self.rect.bottom; sensor_rect.height = 1 
@@ -215,24 +176,20 @@ class Player(pygame.sprite.Sprite):
 # --- CLASSES AUXILIARES E SETUP ---
 class Ground(pygame.sprite.Sprite):
     def __init__(self, x_pos):
-        super().__init__()
-        ground_w = WIDTH * 2
-        self.image = pygame.Surface((ground_w, ALTURA_CHAO), pygame.SRCALPHA); self.image.fill((0, 100, 160, 0)); self.rect = self.image.get_rect(x=x_pos, y=GROUND_Y_POS)
+        super().__init__(); ground_w = WIDTH * 2; self.image = pygame.Surface((ground_w, ALTURA_CHAO), pygame.SRCALPHA); self.image.fill((0, 100, 160, 0)); self.rect = self.image.get_rect(x=x_pos, y=GROUND_Y_POS)
     def update(self):
-        global scroll_speed
-        self.rect.x -= scroll_speed
+        global scroll_speed; self.rect.x -= scroll_speed
         
 class Background(pygame.sprite.Sprite):
     def __init__(self, x_pos):
-        super().__init__()
+        super().__init__(); 
         try: self.image = pygame.image.load("images/fundosonics.jpg").convert(); self.image = pygame.transform.scale(self.image, (WIDTH, HEIGHT))
         except pygame.error as e: self.image = pygame.Surface((WIDTH, HEIGHT)); self.image.fill((135, 206, 235)) 
         self.rect = self.image.get_rect(x=x_pos, y=0)
     def update(self):
-        global scroll_speed
-        self.rect.x -= scroll_speed 
+        global scroll_speed; self.rect.x -= scroll_speed 
         
-# --- INICIALIZACAO DE ASSETS E GRUPOS ---
+# --- INICIALIZACAO DE ASSETS ---
 try:
     PLATFORM_IMG_A = pygame.image.load("images/plataformaexplo.png").convert_alpha()
     PLATFORM_IMG_B = pygame.image.load("images/plataformabem.png").convert_alpha()
@@ -246,12 +203,10 @@ try:
     ground1 = Ground(0); ground2 = Ground(ground1.rect.width); ground_group.add(ground1, ground2)
     bg1 = Background(0); bg2 = Background(WIDTH); background_group.add(bg1, bg2)
 
-    # AGENDA: Plataformas (com moedas) a cada 2.0s
     clock.schedule_interval(spawn_platform, 2.0)
-    # AGENDA: Moedas no Chao a cada 1.2s
     clock.schedule_interval(spawn_coins_on_ground, 1.2)
     
-    # Plataforma inicial (para dar o que o jogador saltar no inicio)
+    # Plataforma inicial
     image_for_first_platform = PLATFORM_IMG_A
     if not PLATFORM_IMG_A: 
         image_for_first_platform = pygame.Surface((200, 20), pygame.SRCALPHA); image_for_first_platform.fill(PLATFORM_COLOR)
@@ -269,12 +224,15 @@ def off_screen(sprite):
 # ----------------------------------------
 
 def update():
-    global scroll_speed
+    global scroll_speed, score
     if not player_group: return
         
     all_terrain = ground_group.sprites() + platform_group.sprites()
     
     player_group.update(all_terrain)
+    
+    coins_collected = pygame.sprite.spritecollide(player, coin_group, True)
+    score += len(coins_collected)
     
     ground_group.update(); background_group.update(); platform_group.update(); coin_group.update()
     
@@ -295,6 +253,8 @@ def draw():
     coin_group.draw(screen.surface)
     ground_group.draw(screen.surface) 
     player_group.draw(screen.surface)
+    
+    screen.draw.text(f"SCORE: {score}", (20, 20), color='white', fontsize=40)
 
 # ----------------------------------------
 
