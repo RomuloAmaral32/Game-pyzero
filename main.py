@@ -64,7 +64,6 @@ class Platform(pygame.sprite.Sprite):
 class Coin(pygame.sprite.Sprite):
     def __init__(self, x_pos, y_pos):
         super().__init__()
-        # fallback caso a imagem não tenha sido carregada
         if ASSETS.get('COIN_IMAGE'):
             try:
                 self.image = pygame.transform.scale(ASSETS['COIN_IMAGE'], (30, 30))
@@ -93,11 +92,11 @@ class CorredorInimigo(pygame.sprite.Sprite):
             try:
                 self.image = pygame.transform.scale(ASSETS['CORREDOR_INIMIGO_IMAGE'], (120, 120))
             except Exception:
-                s = pygame.Surface((120, 120))
+                s = pygame.Surface((120, 120), pygame.SRCALPHA)
                 s.fill((200, 0, 0))
                 self.image = s
         else:
-            s = pygame.Surface((120, 120))
+            s = pygame.Surface((120, 120), pygame.SRCALPHA)
             s.fill((200, 0, 0))
             self.image = s
         self.rect = self.image.get_rect(x=x_pos, y=GROUND_Y_POS - 120)
@@ -118,11 +117,11 @@ class NaveInimiga(pygame.sprite.Sprite):
             try:
                 self.image = pygame.transform.scale(ASSETS['NAVE_INIMIGA_IMAGE'], (150, 100))
             except Exception:
-                s = pygame.Surface((150, 100))
+                s = pygame.Surface((150, 100), pygame.SRCALPHA)
                 s.fill((0, 0, 200))
                 self.image = s
         else:
-            s = pygame.Surface((150, 100))
+            s = pygame.Surface((150, 100), pygame.SRCALPHA)
             s.fill((0, 0, 200))
             self.image = s
         self.rect = self.image.get_rect(x=x_pos, y=y_pos)
@@ -151,10 +150,8 @@ def spawn_platform():
     platform_width = random.randint(150, 300)
     platform_y = random.randint(GROUND_Y_POS - 250, GROUND_Y_POS - 100)
     new_platform_x = random.randint(min_x_start, min_x_start + 200)
-
     is_explosive_platform = random.random() < 0.3
 
-    # Define a imagem a usar, com fallback para cor sólida
     image_to_use = None
     if is_explosive_platform and ASSETS.get('PLATFORM_IMG_A'):
         image_to_use = ASSETS['PLATFORM_IMG_A']
@@ -183,7 +180,6 @@ def spawn_platform():
 def spawn_coins_on_ground():
     if not ASSETS.get('COIN_IMAGE') or 'coin_group' not in globals() or coin_group is None:
         return
-
     if random.random() < 0.5:
         num_coins = random.randint(3, 6)
         start_x = WIDTH + random.randint(50, 200)
@@ -220,19 +216,11 @@ class Player(pygame.sprite.Sprite):
                 img = pygame.image.load(f"images/{filename}").convert_alpha()
                 return pygame.transform.scale(img, (LARGURA_SPRITE_PLAYER, ALTURA_SPRITE_PLAYER))
             except Exception as e:
-                # fallback visível e neutro (cinza) — NÃO transparente
-                fail_surface = pygame.Surface((LARGURA_SPRITE_PLAYER, ALTURA_SPRITE_PLAYER), pygame.SRCALPHA)
-                # fundo cinza claro para placeholder
-                fail_surface.fill((140, 140, 140))
-                # marca discreta no centro para indicar "imagem ausente"
-                try:
-                    pygame.draw.circle(fail_surface, (100, 100, 100), (LARGURA_SPRITE_PLAYER // 2, ALTURA_SPRITE_PLAYER // 2), 10)
-                except Exception:
-                    pass
-                print(f"ERROR: Could not load {filename}. Details: {e}")
-                return fail_surface
+                s = pygame.Surface((LARGURA_SPRITE_PLAYER, ALTURA_SPRITE_PLAYER), pygame.SRCALPHA)
+                s.fill((0, 0, 0, 0))
+                return s
 
-        self.idle_right = _load_and_scale("paradodir.png")
+        self.idle = _load_and_scale("paradodir.png")
         self.run_right = _load_and_scale("correndodir.png")
         self.fly_right = _load_and_scale("semipulodir.png")
         self.fall_right = _load_and_scale("pulodir.png")
@@ -241,14 +229,12 @@ class Player(pygame.sprite.Sprite):
         self.fly_left = _load_and_scale("semipuloesq.png")
         self.fall_left = _load_and_scale("puloesq.png")
         self.land_left = _load_and_scale("pousoesq.png")
-        try:
-            self.idle_left = _load_and_scale("paradoesq.png")
-        except Exception:
-            # se faltou imagem esquerda, usa flip da idle_right (que agora sempre existe como placeholder visível)
-            self.idle_left = pygame.transform.flip(self.idle_right, True, False)
 
-        self.explosion_frames = [pygame.transform.scale(img, (LARGURA_SPRITE_PLAYER, ALTURA_SPRITE_PLAYER)) for img in
-                                 EXPLOSION_IMAGES]
+        self.idle_right = self.idle
+        self.idle_left = self.idle
+
+        self.explosion_frames = [pygame.transform.scale(img, (LARGURA_SPRITE_PLAYER, ALTURA_SPRITE_PLAYER))
+                                 for img in EXPLOSION_IMAGES]
 
         self.current_image = self.idle_right
         self.image = self.current_image
@@ -382,7 +368,6 @@ class Player(pygame.sprite.Sprite):
                 if self.explosion_frame < len(self.explosion_frames):
                     self.image = self.explosion_frames[self.explosion_frame]
                 else:
-                    # não mata o jogo, apenas define GAME_OVER
                     try:
                         self.kill()
                     except Exception:
@@ -394,7 +379,6 @@ class Player(pygame.sprite.Sprite):
             self.update_explosion_animation()
             return
 
-        # Checa colisão com inimigos (morte)
         if pygame.sprite.spritecollide(self, all_enemy_sprites, False):
             self.start_explosion()
             return
@@ -411,7 +395,6 @@ class Player(pygame.sprite.Sprite):
             if moving_horizontally:
                 self.current_image = self.run_right if self.facing_right else self.run_left
             else:
-                # garante que a imagem de parado existe — usamos idle_right/idle_left carregadas ou placeholder
                 self.current_image = self.idle_right if self.facing_right else self.idle_left
         else:
             if self.speed_y < 0:
@@ -462,24 +445,19 @@ class Background(pygame.sprite.Sprite):
 def load_assets():
     global EXPLOSION_IMAGES
     try:
-        # Imagens
         ASSETS['PLATFORM_IMG_A'] = pygame.image.load("images/plataformaexplo.png").convert_alpha()
         ASSETS['PLATFORM_IMG_B'] = pygame.image.load("images/plataformabem.png").convert_alpha()
         ASSETS['COIN_IMAGE'] = pygame.image.load("images/moeda3.png").convert_alpha()
         for i in range(1, 4):
             EXPLOSION_IMAGES.append(pygame.image.load(f"images/explo{i}.png").convert_alpha())
-        # Inimigos
         ASSETS['NAVE_INIMIGA_IMAGE'] = pygame.image.load("images/naveinimiga.png").convert_alpha()
         ASSETS['CORREDOR_INIMIGO_IMAGE'] = pygame.image.load("images/corredorinimigo.png").convert_alpha()
         ASSETS['GAME_OVER_IMAGE'] = pygame.image.load("images/imagemderrota.png").convert_alpha()
 
-        # Música (apenas armazena caminho; tocada mais tarde se existir)
         ASSETS['MUSIC_FILE'] = 'sounds/sonic_bgm.mp3'
 
-        # Audio (efeitos)
         try:
             pygame.mixer.init()
-            # Carrega efeitos — se os arquivos não existirem, serão tratados
             try:
                 ASSETS['COIN_SOUND'] = pygame.mixer.Sound('sounds/coin_sfx.mp3')
             except Exception:
@@ -492,8 +470,7 @@ def load_assets():
             ASSETS['COIN_SOUND'] = None
             ASSETS['EXPLOSION_SOUND'] = None
     except Exception as e:
-        print(f"ERRO: FALHA AO CARREGAR ASSETS. Detalhes: {e}. Verifique as pastas 'images/' e 'sounds/'")
-        # garante que chaves existem mesmo em falha
+        print("erro ao carregar assets", e)
         ASSETS.setdefault('PLATFORM_IMG_A', None)
         ASSETS.setdefault('PLATFORM_IMG_B', None)
         ASSETS.setdefault('COIN_IMAGE', None)
@@ -506,12 +483,9 @@ def load_assets():
 
 
 def _start_music_if_enabled():
-    """Helper: start background music if is_audio_on and file exists."""
     if not is_audio_on:
-        try:
-            pygame.mixer.music.stop()
-        except Exception:
-            pass
+        try: pygame.mixer.music.stop()
+        except: pass
         return
     music_file = ASSETS.get('MUSIC_FILE')
     if not music_file:
@@ -521,20 +495,17 @@ def _start_music_if_enabled():
         pygame.mixer.music.load(music_file)
         pygame.mixer.music.play(-1)
         pygame.mixer.music.set_volume(0.5)
-    except Exception:
-        # se falhar, apenas ignore (não é crítico)
+    except:
         pass
 
 
 def start_game():
     global player, player_group, ground_group, background_group, platform_group, coin_group, score, game_state, scroll_speed, enemy_ground_group, enemy_air_group
 
-    # Reset do estado
     score = 0
     game_state = 'RUNNING'
     scroll_speed = 0
 
-    # Inicializacao dos Grupos e Objetos
     player_group = pygame.sprite.Group()
     ground_group = pygame.sprite.Group()
     background_group = pygame.sprite.Group()
@@ -542,22 +513,24 @@ def start_game():
     coin_group = pygame.sprite.Group()
     enemy_ground_group = pygame.sprite.Group()
     enemy_air_group = pygame.sprite.Group()
+
     player = Player()
     player_group.add(player)
+
     ground1 = Ground(0)
     ground2 = Ground(ground1.rect.width)
     ground_group.add(ground1, ground2)
+
     bg1 = Background(0)
     bg2 = Background(WIDTH)
     background_group.add(bg1, bg2)
 
-    # Agenda funcoes (remove e adiciona)
     try:
         clock.unschedule(spawn_platform)
         clock.unschedule(spawn_coins_on_ground)
         clock.unschedule(spawn_ground_enemy)
         clock.unschedule(spawn_air_enemy)
-    except Exception:
+    except:
         pass
 
     clock.schedule_interval(spawn_platform, 2.0)
@@ -565,15 +538,15 @@ def start_game():
     clock.schedule_interval(spawn_ground_enemy, 2.5)
     clock.schedule_interval(spawn_air_enemy, 4.0)
 
-    # Plataforma inicial
     image_for_first_platform = ASSETS.get('PLATFORM_IMG_A')
     if not image_for_first_platform:
         image_for_first_platform = pygame.Surface((200, 20), pygame.SRCALPHA)
         image_for_first_platform.fill(PLATFORM_COLOR)
 
-    platform_group.add(Platform(x_pos=WIDTH, y_pos=GROUND_Y_POS - 150, width=200, height=20, image_surface=image_for_first_platform))
+    platform_group.add(
+        Platform(WIDTH, GROUND_Y_POS - 150, 200, 20, image_for_first_platform)
+    )
 
-    # Inicia a musica de fundo se ligado
     _start_music_if_enabled()
 
 
@@ -583,73 +556,51 @@ def on_key_down(key):
         start_game()
 
 
-# --- INICIALIZACAO ---
 load_assets()
-# O jogo começa no menu; a música não é tocada até start_game ou ligar audio.
 
-# --- FUNCAO AUXILIAR ---
 def off_screen(sprite):
     return sprite.rect.right < 0
 
 
-# --- FUNÇÕES DE EVENTO DO MOUSE PARA O MENU ---
+# MENU CLICK
 def on_mouse_down(pos):
     global game_state, is_audio_on
+
     if game_state != 'MENU':
         return
 
     x, y = pos
 
-    # Check "Começar o Jogo"
+    # começar
     if 400 < x < 800 and BUTTON_Y_START < y < BUTTON_Y_START + BUTTON_HEIGHT:
         start_game()
         return
 
-    # Check "Música e Sons"
-    if 400 < x < 800 and BUTTON_Y_START + 80 < y < BUTTON_Y_START + 80 + BUTTON_HEIGHT:
+    # musica
+    if 400 < x < 800 and BUTTON_Y_START + 80 < y < BUTTON_Y_START + 140:
         is_audio_on = not is_audio_on
         if is_audio_on:
-            # liga música e efeitos (se existirem)
             _start_music_if_enabled()
             if ASSETS.get('COIN_SOUND'):
-                try:
-                    ASSETS['COIN_SOUND'].set_volume(1.0)
-                except Exception:
-                    pass
+                ASSETS['COIN_SOUND'].set_volume(1.0)
             if ASSETS.get('EXPLOSION_SOUND'):
-                try:
-                    ASSETS['EXPLOSION_SOUND'].set_volume(1.0)
-                except Exception:
-                    pass
+                ASSETS['EXPLOSION_SOUND'].set_volume(1.0)
         else:
-            # desliga música e efeitos
-            try:
-                pygame.mixer.music.stop()
-            except Exception:
-                pass
+            try: pygame.mixer.music.stop()
+            except: pass
             if ASSETS.get('COIN_SOUND'):
-                try:
-                    ASSETS['COIN_SOUND'].set_volume(0.0)
-                except Exception:
-                    pass
+                ASSETS['COIN_SOUND'].set_volume(0.0)
             if ASSETS.get('EXPLOSION_SOUND'):
-                try:
-                    ASSETS['EXPLOSION_SOUND'].set_volume(0.0)
-                except Exception:
-                    pass
+                ASSETS['EXPLOSION_SOUND'].set_volume(0.0)
         return
 
-    # Check "Saída"
-    if 400 < x < 800 and BUTTON_Y_START + 160 < y < BUTTON_Y_START + 160 + BUTTON_HEIGHT:
-        try:
-            pygame.mixer.music.stop()
-        except Exception:
-            pass
+    # sair
+    if 400 < x < 800 and BUTTON_Y_START + 160 < y < BUTTON_Y_START + 220:
+        try: pygame.mixer.music.stop()
+        except: pass
         pygame.quit()
         exit()
 
-
-# ----------------------------------------
 
 def update():
     global scroll_speed, score, game_state
@@ -671,13 +622,9 @@ def update():
 
     coins_collected = pygame.sprite.spritecollide(player, coin_group, True)
     if coins_collected and ASSETS.get('COIN_SOUND') and is_audio_on:
-        try:
-            ASSETS['COIN_SOUND'].play()
-        except Exception:
-            pass
+        ASSETS['COIN_SOUND'].play()
     score += len(coins_collected)
 
-    # Atualiza todos os grupos de sprites
     ground_group.update()
     background_group.update()
     platform_group.update()
@@ -685,7 +632,6 @@ def update():
     enemy_ground_group.update()
     enemy_air_group.update()
 
-    # Rola o fundo e o chão
     if scroll_speed > 0:
         if background_group.sprites() and off_screen(background_group.sprites()[0]):
             background_group.remove(background_group.sprites()[0])
@@ -702,26 +648,29 @@ def draw():
 
     if game_state == 'MENU':
         screen.fill((0, 0, 50))
-        screen.draw.text("SONIC JUMPER", (WIDTH // 2, BUTTON_Y_START - 100), color='yellow', fontsize=100,
-                         anchor=(0.5, 0.5))
+        screen.draw.text("SONIC JUMPER", (WIDTH // 2, BUTTON_Y_START - 100),
+                         color='yellow', fontsize=100, anchor=(0.5, 0.5))
 
-        buttons = ["COMEÇAR O JOGO", "MÚSICA E SONS: " + ("LIGADO" if is_audio_on else "DESLIGADO"), "SAÍDA"]
+        buttons = [
+            "COMEÇAR O JOGO",
+            "MÚSICA E SONS: " + ("LIGADO" if is_audio_on else "DESLIGADO"),
+            "SAÍDA"
+        ]
 
         for i, text in enumerate(buttons):
             y_pos = BUTTON_Y_START + (i * 80)
-            rect = pygame.Rect(WIDTH // 2 - BUTTON_WIDTH // 2, y_pos, BUTTON_WIDTH, BUTTON_HEIGHT)
+            rect = pygame.Rect(WIDTH // 2 - BUTTON_WIDTH // 2, y_pos,
+                               BUTTON_WIDTH, BUTTON_HEIGHT)
 
-            # Muda a cor ao passar o mouse (hover effect)
             mouse_x, mouse_y = pygame.mouse.get_pos()
             button_color = (60, 60, 60) if rect.collidepoint(mouse_x, mouse_y) else (30, 30, 30)
 
             screen.draw.filled_rect(rect, button_color)
             screen.draw.rect(rect, (200, 200, 200))
-            # usar rect.center como posição e anchor numérico (0.5,0.5)
-            screen.draw.text(text, rect.center, color='white', fontsize=30, anchor=(0.5, 0.5))
+            screen.draw.text(text, rect.center,
+                             color='white', fontsize=30, anchor=(0.5, 0.5))
         return
 
-    # --- DESENHO DO JOGO (RUNNING) ---
     if background_group:
         background_group.draw(screen.surface)
     if platform_group:
@@ -735,29 +684,25 @@ def draw():
     if ground_group:
         ground_group.draw(screen.surface)
 
-    if player_group.sprites():
+    if player_group:
         player_group.draw(screen.surface)
 
     screen.draw.text(f"SCORE: {score}", (20, 20), color='white', fontsize=40)
 
     if game_state == 'GAME_OVER':
-        # Desenha a imagem de Game Over em tela cheia (100%)
         if ASSETS.get('GAME_OVER_IMAGE'):
             try:
                 screen.surface.blit(ASSETS['GAME_OVER_IMAGE'], (0, 0))
-            except Exception:
+            except:
                 screen.draw.filled_rect(pygame.Rect(0, 0, WIDTH, HEIGHT), (0, 0, 0))
         else:
-            # Fallback para o overlay preto se a imagem falhar
             screen.draw.filled_rect(pygame.Rect(0, 0, WIDTH, HEIGHT), (0, 0, 0, 180))
 
         screen.draw.text("VOCE PERDEU!", (WIDTH // 2, HEIGHT // 2 - 50),
                          color='red', fontsize=100, anchor=(0.5, 0.5))
-
-        screen.draw.text("APERTE ENTER PARA JOGAR NOVAMENTE", (WIDTH // 2, HEIGHT // 2 + 50),
+        screen.draw.text("APERTE ENTER PARA JOGAR NOVAMENTE",
+                         (WIDTH // 2, HEIGHT // 2 + 50),
                          color='white', fontsize=50, anchor=(0.5, 0.5))
 
-
-# ----------------------------------------
 
 pgzrun.go()
