@@ -7,7 +7,7 @@ import math
 # --- CONFIGURACOES PGZERO ---
 WIDTH = 1200
 HEIGHT = 600
-TITLE = "SONIC ESTAVEL FINALISSIMO COM COLISAO CORRIGIDA"
+TITLE = "SONIC ESTAVEL FINALISSIMO"
 FPS = 30 
 GAME_SPEED = 8  
 
@@ -38,8 +38,7 @@ enemy_ground_group = None
 enemy_air_group = None    
 NAVE_INIMIGA_IMAGE = None
 CORREDOR_INIMIGO_IMAGE = None
-COIN_SOUND = None
-EXPLOSION_SOUND = None
+# Removido COIN_SOUND e EXPLOSION_SOUND globals
 
 # --- CLASSE PLATFORM ---
 class Platform(pygame.sprite.Sprite):
@@ -97,7 +96,6 @@ class NaveInimiga(pygame.sprite.Sprite):
     def update(self):
         global scroll_speed
         self.rect.x -= (scroll_speed + self.speed) 
-        # CORRIGIDO: Usando math.sin do módulo 'math'
         self.rect.y = self.initial_y + self.amplitude * math.sin(pygame.time.get_ticks() * self.freq)
         if self.rect.right < 0:
             self.kill() 
@@ -147,11 +145,8 @@ def spawn_ground_enemy():
         enemy_ground_group.add(new_enemy)
 
 def spawn_air_enemy():
-    # CHECAGEM CRITICA: Se a imagem nao carregou, nao tente criar o inimigo.
     if not NAVE_INIMIGA_IMAGE or 'enemy_air_group' not in globals() or enemy_air_group is None: return
-    
-    # Aumentado para 70% de chance de spawn
-    if random.random() < 0.7: 
+    if random.random() < 0.7:
         y_pos = random.randint(HEIGHT // 4, HEIGHT // 2) 
         new_enemy = NaveInimiga(x_pos=WIDTH + random.randint(50, 500), y_pos=y_pos)
         enemy_air_group.add(new_enemy)
@@ -168,7 +163,7 @@ class Player(pygame.sprite.Sprite):
                 img = pygame.image.load(f"images/{filename}").convert_alpha()
                 return pygame.transform.scale(img, (LARGURA_SPRITE_PLAYER, ALTURA_SPRITE_PLAYER))
             except pygame.error as e:
-                print(f"ERROR: Nao foi possivel carregar {filename}. Detalhes: {e}")
+                print(f"ERROR: Could not load {filename}. Details: {e}")
                 fail_surface = pygame.Surface((LARGURA_SPRITE_PLAYER, ALTURA_SPRITE_PLAYER)); fail_surface.fill((255, 0, 0)); return fail_surface
 
         self.idle_right = _load_and_scale("paradodir.png"); self.run_right = _load_and_scale("correndodir.png"); self.fly_right = _load_and_scale("semipulodir.png"); self.fall_right = _load_and_scale("pulodir.png"); self.land_right = _load_and_scale("pousodir.png"); self.run_left = _load_and_scale("correndoesq.png"); self.fly_left = _load_and_scale("semipuloesq.png"); self.fall_left = _load_and_scale("puloesq.png"); self.land_left = _load_and_scale("pousoesq.png")
@@ -345,8 +340,7 @@ def load_assets():
         PLATFORM_IMG_B = pygame.image.load("images/plataformabem.png").convert_alpha()
         COIN_IMAGE = pygame.image.load("images/moeda3.png").convert_alpha()
         for i in range(1, 4): EXPLOSION_IMAGES.append(pygame.image.load(f"images/explo{i}.png").convert_alpha())
-        
-        # --- Carregamento de Inimigos ---
+        # Imagens de inimigos
         NAVE_INIMIGA_IMAGE = pygame.image.load("images/naveinimiga.png").convert_alpha()
         CORREDOR_INIMIGO_IMAGE = pygame.image.load("images/corredorinimigo.png").convert_alpha()
         
