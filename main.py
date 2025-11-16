@@ -18,14 +18,21 @@ GROUND_Y_POS = 480
 PLATFORM_COLOR = (180, 80, 0) 
 MIN_PLATFORM_SPACING = 350 
 
-# --- VARIAVEIS GLOBAIS DE SCROLL E IMAGENS ---
+# --- VARIAVEIS GLOBAIS DE CONTROLE E IMAGENS ---
 scroll_speed = 0
 score = 0
+game_state = 'RUNNING'
 PLATFORM_IMG_A = None 
 PLATFORM_IMG_B = None
 COIN_IMAGE = None 
-EXPLOSION_IMAGES = [] # Lista global para armazenar as superficies de explosao
+EXPLOSION_IMAGES = []
 explosion_frame_rate = 5 
+player = None
+player_group = None
+ground_group = None
+background_group = None
+platform_group = None
+coin_group = None
 
 # --- CLASSE PLATFORM ---
 class Platform(pygame.sprite.Sprite):
@@ -109,7 +116,6 @@ class Player(pygame.sprite.Sprite):
         try: self.idle_left = _load_and_scale("paradoesq.png")
         except: self.idle_left = pygame.transform.flip(self.idle_right, True, False)
 
-        # FIX STRUCTURAL BUG: Inicializa a lista de frames de explosao
         self.explosion_frames = [pygame.transform.scale(img, (LARGURA_SPRITE_PLAYER, ALTURA_SPRITE_PLAYER)) for img in EXPLOSION_IMAGES]
 
         self.current_image = self.idle_right; self.image = self.current_image; self.rect = self.image.get_rect(x=100, y=GROUND_Y_POS - ALTURA_SPRITE_PLAYER) 
@@ -140,7 +146,8 @@ class Player(pygame.sprite.Sprite):
 
     def jump_or_fly(self):
         if self.is_exploding: return
-        if keyboard.space and self.on_ground: self.speed_y = -18; self.on_ground = False; self.is_jumping = True; self.is_falling = False
+        if keyboard.space and self.on_ground: 
+            self.speed_y = -18; self.on_ground = False; self.is_jumping = True; self.is_falling = False
         
     def check_ground_sensor(self, all_terrain_sprites):
         sensor_rect = self.rect.copy(); sensor_rect.y = self.rect.bottom; sensor_rect.height = 1 
@@ -180,12 +187,13 @@ class Player(pygame.sprite.Sprite):
             self.rect.bottom = GROUND_Y_POS; self.speed_y = 0; self.on_ground = True
 
     def start_explosion(self):
+        global game_state
         if not self.is_exploding and self.explosion_frames:
             self.is_exploding = True; self.explosion_frame = 0; self.image = self.explosion_frames[0] 
             self.speed_y = 0; self.on_ground = False; self.time_since_explosion_frame_change = 0
 
     def update_explosion_animation(self):
-        global explosion_frame_rate
+        global explosion_frame_rate, game_state
         if self.is_exploding:
             self.time_since_explosion_frame_change += 1
             if self.time_since_explosion_frame_change >= explosion_frame_rate:
@@ -194,6 +202,7 @@ class Player(pygame.sprite.Sprite):
                     self.image = self.explosion_frames[self.explosion_frame]
                 else:
                     self.kill()
+                    game_state = 'GAME_OVER'
 
     def update(self, all_terrain_sprites): 
         if self.is_exploding:
@@ -226,31 +235,39 @@ class Background(pygame.sprite.Sprite):
     def __init__(self, x_pos):
         super().__init__(); 
         try: self.image = pygame.image.load("images/fundosonics.jpg").convert(); self.image = pygame.transform.scale(self.image, (WIDTH, HEIGHT))
-        except pygame.error as e: self.image = pygame.Surface((WIDTH, HEIGHT)); self.image.fill((135, 206, 235)) 
+        except pygame.error as e: self.image = pygame.Surface((WIDTH, HEIGHT)); self.image.fill((135, 206, 235)); self.is_explosive = False
         self.rect = self.image.get_rect(x=x_pos, y=0); self.is_explosive = False
     def update(self):
         global scroll_speed; self.rect.x -= scroll_speed 
         
-# --- INICIALIZACAO DE ASSETS ---
-try:
-    PLATFORM_IMG_A = pygame.image.load("images/plataformaexplo.png").convert_alpha()
-    PLATFORM_IMG_B = pygame.image.load("images/plataformabem.png").convert_alpha()
-    COIN_IMAGE = pygame.image.load("images/moeda3.png").convert_alpha()
+# --- FUNCOES DE CONTROLE DO JOGO ---
+def load_assets():
+    global PLATFORM_IMG_A, PLATFORM_IMG_B, COIN_IMAGE, EXPLOSION_IMAGES
+    try:
+        PLATFORM_IMG_A = pygame.image.load("images/plataformaexplo.png").convert_alpha()
+        PLATFORM_IMG_B = pygame.image.load("images/plataformabem.png").convert_alpha()
+        COIN_IMAGE = pygame.image.load("images/moeda3.png").convert_alpha()
+        for i in range(1, 4): EXPLOSION_IMAGES.append(pygame.image.load(f"images/explo{i}.png").convert_alpha())
+    except pygame.error as e:
+        print(f"ERRO: FALHA AO CARREGAR ASSETS. Detalhes: {e}")
+        PLATFORM_IMG_A = None; PLATFORM_IMG_B = None; COIN_IMAGE = None; EXPLOSION_IMAGES = []
+
+def start_game():
+    global player, player_group, ground_group, background_group, platform_group, coin_group, score, game_state, scroll_speed
+
+    # Reset do estado
+    score = 0
+    game_state = 'RUNNING'
+    scroll_speed = 0
     
-    # Carrega as imagens da explosao
-    for i in range(1, 4): 
-        EXPLOSION_IMAGES.append(pygame.image.load(f"images/explo{i}.png").convert_alpha())
-
-except pygame.error as e:
-    PLATFORM_IMG_A = None; PLATFORM_IMG_B = None; COIN_IMAGE = None
-    EXPLOSION_IMAGES = []
-
-try:
+    # Inicializacao dos Grupos e Objetos
     player_group = pygame.sprite.Group(); ground_group = pygame.sprite.Group(); background_group = pygame.sprite.Group(); platform_group = pygame.sprite.Group(); coin_group = pygame.sprite.Group() 
     player = Player(); player_group.add(player)
     ground1 = Ground(0); ground2 = Ground(ground1.rect.width); ground_group.add(ground1, ground2)
     bg1 = Background(0); bg2 = Background(WIDTH); background_group.add(bg1, bg2)
 
+    # Agenda funcoes
+    clock.unschedule(spawn_platform); clock.unschedule(spawn_coins_on_ground)
     clock.schedule_interval(spawn_platform, 2.0)
     clock.schedule_interval(spawn_coins_on_ground, 1.2)
     
@@ -260,10 +277,18 @@ try:
         image_for_first_platform = pygame.Surface((200, 20), pygame.SRCALPHA); image_for_first_platform.fill(PLATFORM_COLOR)
         
     platform_group.add(Platform(x_pos=WIDTH, y_pos=GROUND_Y_POS - 150, width=200, height=20, image_surface=image_for_first_platform))
-    
+
+def on_key_down(key):
+    global game_state
+    if game_state == 'GAME_OVER' and key == pygame.K_RETURN:
+        start_game()
+        
+# --- INICIALIZACAO ---
+load_assets()
+try:
+    start_game()
 except Exception as e:
     print(f"ERRO CRITICO AO INICIAR GRUPOS/SPRITES: {e}")
-    player_group = None; ground_group = None; background_group = None; platform_group = None; coin_group = None
 
 # --- FUNCAO AUXILIAR ---
 def off_screen(sprite):
@@ -272,7 +297,12 @@ def off_screen(sprite):
 # ----------------------------------------
 
 def update():
-    global scroll_speed, score
+    global scroll_speed, score, game_state
+    
+    if game_state == 'GAME_OVER':
+        scroll_speed = 0
+        return
+        
     if not player_group: return
         
     all_terrain = ground_group.sprites() + platform_group.sprites()
@@ -303,6 +333,15 @@ def draw():
     player_group.draw(screen.surface)
     
     screen.draw.text(f"SCORE: {score}", (20, 20), color='white', fontsize=40)
+    
+    if game_state == 'GAME_OVER':
+        screen.draw.filled_rect(pygame.Rect(0, 0, WIDTH, HEIGHT), (0, 0, 0, 180)) 
+        
+        screen.draw.text("VOCE PERDEU!", (WIDTH // 2, HEIGHT // 2 - 50), 
+                         color='red', fontsize=100, anchor=('center', 'center'))
+        
+        screen.draw.text("APERTE ENTER PARA JOGAR NOVAMENTE", (WIDTH // 2, HEIGHT // 2 + 50), 
+                         color='white', fontsize=50, anchor=('center', 'center'))
 
 # ----------------------------------------
 
